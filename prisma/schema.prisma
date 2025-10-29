@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Country {
+  id               Int       @id @default(autoincrement())
+  name             String    @unique @db.VarChar(255)
+  capital          String?   @db.VarChar(255)
+  region           String?   @db.VarChar(100)
+  population       BigInt
+  currencyCode     String?   @map("currency_code") @db.VarChar(10)
+  exchangeRate     Float?    @map("exchange_rate")
+  estimatedGdp     Float?    @map("estimated_gdp")
+  flagUrl          String?   @map("flag_url") @db.Text
+  lastRefreshedAt  DateTime  @default(now()) @map("last_refreshed_at")
+  
+  @@map("countries")
+  @@index([region])
+  @@index([currencyCode])
+}
+
+model SystemStatus {
+  id              Int      @id @default(autoincrement())
+  lastRefreshedAt DateTime @map("last_refreshed_at")
+  totalCountries  Int      @map("total_countries") @default(0)
+  
+  @@map("system_status")
+}

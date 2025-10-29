@@ -1,35 +1,31 @@
-import axios, { AxiosError } from "axios";
-import { PrismaClient } from "@prisma/client";
+import axios, { AxiosError } from 'axios';
+import { PrismaClient } from '@prisma/client';
 import {
   CountryApiResponse,
   CountryData,
   AppError,
   CountryResponse,
   FilterOptions,
-} from "../types";
-import { ExchangeRateService } from "./exchange-rate.service";
-import { ImageGeneratorService } from "./image-generator.service";
+} from '../types';
+import { ExchangeRateService } from './exchange-rate.service';
+import { ImageGeneratorService } from './image-generator.service';
 
 const prisma = new PrismaClient();
 
 export class CountryService {
   private static readonly API_URL =
     process.env.COUNTRIES_API_URL ||
-    "https://restcountries.com/v2/all?fields=name,capital,region,population,flag,currencies";
-  private static readonly TIMEOUT = parseInt(
-    process.env.API_TIMEOUT || "10000"
-  );
+    'https://restcountries.com/v2/all?fields=name,capital,region,population,flag,currencies';
+  private static readonly TIMEOUT = parseInt(process.env.API_TIMEOUT || '10000');
 
   private static async fetchCountriesFromApi(): Promise<CountryApiResponse[]> {
     try {
-      console.log(
-        `[${new Date().toISOString()}] Fetching countries from external API...`
-      );
+      console.log(`[${new Date().toISOString()}] Fetching countries from external API...`);
 
       const response = await axios.get<CountryApiResponse[]>(this.API_URL, {
         timeout: this.TIMEOUT,
         headers: {
-          Accept: "application/json",
+          Accept: 'application/json',
         },
       });
 
@@ -41,7 +37,7 @@ export class CountryService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const axiosError = error as AxiosError;
-        console.error("Countries API Error:", {
+        console.error('Countries API Error:', {
           message: axiosError.message,
           code: axiosError.code,
           status: axiosError.response?.status,
@@ -49,8 +45,8 @@ export class CountryService {
 
         throw new AppError(
           503,
-          "External data source unavailable",
-          "Could not fetch data from Countries API"
+          'External data source unavailable',
+          'Could not fetch data from Countries API'
         );
       }
       throw error;
@@ -81,9 +77,7 @@ export class CountryService {
   ): CountryData {
     // Extract first currency or set to null
     const currencyCode =
-      country.currencies && country.currencies.length > 0
-        ? country.currencies[0].code
-        : null;
+      country.currencies && country.currencies.length > 0 ? country.currencies[0].code : null;
 
     // Get exchange rate if currency exists
     const exchangeRate = currencyCode
@@ -126,10 +120,7 @@ export class CountryService {
 
       // Process each country
       for (const countryApi of countries) {
-        const countryData = this.transformCountryData(
-          countryApi,
-          exchangeRates
-        );
+        const countryData = this.transformCountryData(countryApi, exchangeRates);
 
         // Check if country exists (case-insensitive)
         const existing = await prisma.country.findFirst({
@@ -187,17 +178,18 @@ export class CountryService {
       if (error instanceof AppError) {
         throw error;
       }
-      console.error("Error refreshing countries:", error);
-      throw new AppError(500, "Internal server error");
+      console.error('Error refreshing countries:', error);
+      throw new AppError(500, 'Internal server error');
     }
   }
 
   // Gets all countries with optional filtering and sorting
-  static async getAllCountries(
-    filters: FilterOptions
-  ): Promise<CountryResponse[]> {
+  static async getAllCountries(filters: FilterOptions): Promise<CountryResponse[]> {
     try {
-      const whereClause: any = {};
+      const whereClause: {
+        region?: { equals: string };
+        currencyCode?: { equals: string };
+      } = {};
 
       // Apply filters
       if (filters.region) {
@@ -213,27 +205,30 @@ export class CountryService {
       }
 
       // Apply sorting
-      let orderBy: any = { name: "asc" };
+      let orderBy:
+        | { name: 'asc' | 'desc' }
+        | { estimatedGdp: 'asc' | 'desc' }
+        | { population: 'asc' | 'desc' } = { name: 'asc' };
 
       if (filters.sort) {
         switch (filters.sort) {
-          case "gdp_asc":
-            orderBy = { estimatedGdp: "asc" };
+          case 'gdp_asc':
+            orderBy = { estimatedGdp: 'asc' };
             break;
-          case "gdp_desc":
-            orderBy = { estimatedGdp: "desc" };
+          case 'gdp_desc':
+            orderBy = { estimatedGdp: 'desc' };
             break;
-          case "population_asc":
-            orderBy = { population: "asc" };
+          case 'population_asc':
+            orderBy = { population: 'asc' };
             break;
-          case "population_desc":
-            orderBy = { population: "desc" };
+          case 'population_desc':
+            orderBy = { population: 'desc' };
             break;
-          case "name_asc":
-            orderBy = { name: "asc" };
+          case 'name_asc':
+            orderBy = { name: 'asc' };
             break;
-          case "name_desc":
-            orderBy = { name: "desc" };
+          case 'name_desc':
+            orderBy = { name: 'desc' };
             break;
         }
       }
@@ -243,10 +238,10 @@ export class CountryService {
         orderBy,
       });
 
-      return countries.map(this.formatCountryResponse);
+      return countries.map((c) => this.formatCountryResponse(c));
     } catch (error) {
-      console.error("Error getting countries:", error);
-      throw new AppError(500, "Internal server error");
+      console.error('Error getting countries:', error);
+      throw new AppError(500, 'Internal server error');
     }
   }
 
@@ -262,7 +257,7 @@ export class CountryService {
       });
 
       if (!country) {
-        throw new AppError(404, "Country not found");
+        throw new AppError(404, 'Country not found');
       }
 
       return this.formatCountryResponse(country);
@@ -270,8 +265,8 @@ export class CountryService {
       if (error instanceof AppError) {
         throw error;
       }
-      console.error("Error getting country:", error);
-      throw new AppError(500, "Internal server error");
+      console.error('Error getting country:', error);
+      throw new AppError(500, 'Internal server error');
     }
   }
 
@@ -287,7 +282,7 @@ export class CountryService {
       });
 
       if (!country) {
-        throw new AppError(404, "Country not found");
+        throw new AppError(404, 'Country not found');
       }
 
       await prisma.country.delete({
@@ -306,8 +301,8 @@ export class CountryService {
       if (error instanceof AppError) {
         throw error;
       }
-      console.error("Error deleting country:", error);
-      throw new AppError(500, "Internal server error");
+      console.error('Error deleting country:', error);
+      throw new AppError(500, 'Internal server error');
     }
   }
 
@@ -333,13 +328,24 @@ export class CountryService {
         last_refreshed_at: status.lastRefreshedAt.toISOString(),
       };
     } catch (error) {
-      console.error("Error getting status:", error);
-      throw new AppError(500, "Internal server error");
+      console.error('Error getting status:', error);
+      throw new AppError(500, 'Internal server error');
     }
   }
 
   // Formats country for API response
-  private static formatCountryResponse(country: any): CountryResponse {
+  private static formatCountryResponse(country: {
+    id: number;
+    name: string;
+    capital: string | null;
+    region: string | null;
+    population: bigint;
+    currencyCode: string | null;
+    exchangeRate: number | null;
+    estimatedGdp: number | null;
+    flagUrl: string | null;
+    lastRefreshedAt: Date;
+  }): CountryResponse {
     return {
       id: country.id,
       name: country.name,

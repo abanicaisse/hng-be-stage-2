@@ -46,13 +46,7 @@ export interface CountryResponse {
 export interface FilterOptions {
   region?: string;
   currency?: string;
-  sort?:
-    | "gdp_asc"
-    | "gdp_desc"
-    | "population_asc"
-    | "population_desc"
-    | "name_asc"
-    | "name_desc";
+  sort?: 'gdp_asc' | 'gdp_desc' | 'population_asc' | 'population_desc' | 'name_asc' | 'name_desc';
 }
 
 export interface StatusResponse {
@@ -64,7 +58,7 @@ export class AppError extends Error {
   constructor(
     public statusCode: number,
     public message: string,
-    public details?: any
+    public details?: unknown
   ) {
     super(message);
     Object.setPrototypeOf(this, AppError.prototype);

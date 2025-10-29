@@ -1,13 +1,10 @@
-import axios, { AxiosError } from "axios";
-import { ExchangeRateApiResponse, AppError } from "../types";
+import axios, { AxiosError } from 'axios';
+import { ExchangeRateApiResponse, AppError } from '../types';
 
 export class ExchangeRateService {
   private static readonly API_URL =
-    process.env.EXCHANGE_RATE_API_URL ||
-    "https://open.er-api.com/v6/latest/USD";
-  private static readonly TIMEOUT = parseInt(
-    process.env.API_TIMEOUT || "10000"
-  );
+    process.env.EXCHANGE_RATE_API_URL || 'https://open.er-api.com/v6/latest/USD';
+  private static readonly TIMEOUT = parseInt(process.env.API_TIMEOUT || '10000');
 
   static async fetchExchangeRates(): Promise<Record<string, number>> {
     try {
@@ -16,12 +13,12 @@ export class ExchangeRateService {
       const response = await axios.get<ExchangeRateApiResponse>(this.API_URL, {
         timeout: this.TIMEOUT,
         headers: {
-          Accept: "application/json",
+          Accept: 'application/json',
         },
       });
 
-      if (response.data.result !== "success") {
-        throw new Error("Exchange rate API returned unsuccessful result");
+      if (response.data.result !== 'success') {
+        throw new Error('Exchange rate API returned unsuccessful result');
       }
 
       console.log(
@@ -32,7 +29,7 @@ export class ExchangeRateService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const axiosError = error as AxiosError;
-        console.error("Exchange Rate API Error:", {
+        console.error('Exchange Rate API Error:', {
           message: axiosError.message,
           code: axiosError.code,
           status: axiosError.response?.status,
@@ -40,8 +37,8 @@ export class ExchangeRateService {
 
         throw new AppError(
           503,
-          "External data source unavailable",
-          "Could not fetch data from Exchange Rate API"
+          'External data source unavailable',
+          'Could not fetch data from Exchange Rate API'
         );
       }
       throw error;
@@ -49,10 +46,7 @@ export class ExchangeRateService {
   }
 
   //  Gets exchange rate for a specific currency code
-  static getExchangeRate(
-    rates: Record<string, number>,
-    currencyCode: string
-  ): number | null {
+  static getExchangeRate(rates: Record<string, number>, currencyCode: string): number | null {
     return rates[currencyCode] || null;
   }
 }

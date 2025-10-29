@@ -1,12 +1,12 @@
-import { s3, S3_BUCKET_NAME } from "../config/aws.config";
-import { AppError } from "../types";
+import { s3, S3_BUCKET_NAME } from '../config/aws.config';
+import { AppError } from '../types';
 
 export class S3Service {
   //  Uploads a file buffer to S3
   static async uploadImage(
     buffer: Buffer,
     key: string,
-    contentType: string = "image/png"
+    contentType: string = 'image/png'
   ): Promise<string> {
     try {
       const params = {
@@ -14,26 +14,21 @@ export class S3Service {
         Key: key,
         Body: buffer,
         ContentType: contentType,
-        ACL: "public-read", // Make image publicly accessible
+        ACL: 'public-read', // Make image publicly accessible
       };
 
       const result = await s3.upload(params).promise();
 
-      console.log(
-        `[${new Date().toISOString()}] Image uploaded to S3: ${result.Location}`
-      );
+      console.log(`[${new Date().toISOString()}] Image uploaded to S3: ${result.Location}`);
 
       return result.Location; // Returns the public URL
     } catch (error) {
-      console.error("Error uploading to S3:", error);
-      throw new AppError(500, "Failed to upload image to S3");
+      console.error('Error uploading to S3:', error);
+      throw new AppError(500, 'Failed to upload image to S3');
     }
   }
 
-  static async getSignedUrl(
-    key: string,
-    expiresIn: number = 3600
-  ): Promise<string> {
+  static async getSignedUrl(key: string, expiresIn: number = 3600): Promise<string> {
     try {
       const params = {
         Bucket: S3_BUCKET_NAME,
@@ -41,11 +36,11 @@ export class S3Service {
         Expires: expiresIn, // URL expires in seconds
       };
 
-      const url = await s3.getSignedUrlPromise("getObject", params);
+      const url = await s3.getSignedUrlPromise('getObject', params);
       return url;
     } catch (error) {
-      console.error("Error generating signed URL:", error);
-      throw new AppError(500, "Failed to generate image URL");
+      console.error('Error generating signed URL:', error);
+      throw new AppError(500, 'Failed to generate image URL');
     }
   }
 
@@ -58,8 +53,8 @@ export class S3Service {
         })
         .promise();
       return true;
-    } catch (error: any) {
-      if (error.code === "NotFound") {
+    } catch (error: unknown) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'NotFound') {
         return false;
       }
       throw error;
@@ -77,8 +72,8 @@ export class S3Service {
 
       console.log(`[${new Date().toISOString()}] Deleted from S3: ${key}`);
     } catch (error) {
-      console.error("Error deleting from S3:", error);
-      throw new AppError(500, "Failed to delete image from S3");
+      console.error('Error deleting from S3:', error);
+      throw new AppError(500, 'Failed to delete image from S3');
     }
   }
 

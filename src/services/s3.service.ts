@@ -1,29 +1,40 @@
 import { s3, S3_BUCKET_NAME } from '../config/aws.config';
 import { AppError } from '../types';
+import axios from 'axios';
+
+const API_GATEWAY_URL = process.env.AWS_S3_API_GATEWAY_URL;
 
 export class S3Service {
-  //  Uploads a file buffer to S3
+  //  Uploads a file buffer to S3 via API Gateway
   static async uploadImage(
     buffer: Buffer,
     key: string,
     contentType: string = 'image/png'
   ): Promise<string> {
     try {
-      const params = {
-        Bucket: S3_BUCKET_NAME,
-        Key: key,
-        Body: buffer,
-        ContentType: contentType,
-        ACL: 'public-read', // Make image publicly accessible
-      };
+      const apiGatewayUrl = `${API_GATEWAY_URL}/${S3_BUCKET_NAME}/${key}`;
 
-      const result = await s3.upload(params).promise();
+      await axios.put(apiGatewayUrl, buffer, {
+        headers: {
+          'Content-Type': contentType,
+        },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      });
 
-      console.log(`[${new Date().toISOString()}] Image uploaded to S3: ${result.Location}`);
+      const publicUrl = `https://${S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
 
-      return result.Location; // Returns the public URL
+      console.log(
+        `[${new Date().toISOString()}] Image uploaded to S3 via API Gateway: ${publicUrl}`
+      );
+
+      return publicUrl;
     } catch (error) {
-      console.error('Error uploading to S3:', error);
+      console.error('Error uploading to S3 via API Gateway:', error);
+      if (axios.isAxiosError(error)) {
+        console.error('API Gateway response:', error.response?.data);
+        console.error('API Gateway status:', error.response?.status);
+      }
       throw new AppError(500, 'Failed to upload image to S3');
     }
   }
@@ -33,7 +44,7 @@ export class S3Service {
       const params = {
         Bucket: S3_BUCKET_NAME,
         Key: key,
-        Expires: expiresIn, // URL expires in seconds
+        Expires: expiresIn,
       };
 
       const url = await s3.getSignedUrlPromise('getObject', params);

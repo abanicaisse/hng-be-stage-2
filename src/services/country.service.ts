@@ -75,22 +75,19 @@ export class CountryService {
     country: CountryApiResponse,
     exchangeRates: Record<string, number>
   ): CountryData {
-    // Extract first currency or set to null
     const currencyCode =
       country.currencies && country.currencies.length > 0 ? country.currencies[0].code : null;
 
-    // Get exchange rate if currency exists
     const exchangeRate = currencyCode
       ? ExchangeRateService.getExchangeRate(exchangeRates, currencyCode)
       : null;
 
-    // Calculate GDP
     const estimatedGdp =
       currencyCode && exchangeRate
         ? this.calculateEstimatedGdp(country.population, exchangeRate)
         : currencyCode
           ? null
-          : 0; // 0 if no currency, null if currency but no rate
+          : 0;
 
     return {
       name: country.name,
@@ -104,52 +101,61 @@ export class CountryService {
     };
   }
 
-  // Refreshes all countries from external APIs
   static async refreshCountries(): Promise<{
     updated: number;
     inserted: number;
   }> {
     try {
-      const [countries, exchangeRates] = await Promise.all([
+      const [countriesApiData, exchangeRates] = await Promise.all([
         this.fetchCountriesFromApi(),
         ExchangeRateService.fetchExchangeRates(),
       ]);
 
       let updated = 0;
       let inserted = 0;
+      const refreshAt = new Date();
 
-      // Process each country
-      for (const countryApi of countries) {
-        const countryData = this.transformCountryData(countryApi, exchangeRates);
+      console.log(
+        `[${new Date().toISOString()}] Processing ${countriesApiData.length} countries...`
+      );
 
-        // Check if country exists (case-insensitive)
-        const existing = await prisma.country.findFirst({
-          where: {
-            name: {
-              equals: countryData.name,
-            },
-          },
-        });
+      const BATCH_SIZE = 50;
 
-        if (existing) {
-          await prisma.country.update({
-            where: { id: existing.id },
-            data: {
-              ...countryData,
-              lastRefreshedAt: new Date(),
-            },
-          });
-          updated++;
-        } else {
-          // Insert new country
-          await prisma.country.create({
-            data: {
-              ...countryData,
-              lastRefreshedAt: new Date(),
+      for (let i = 0; i < countriesApiData.length; i += BATCH_SIZE) {
+        const batch = countriesApiData.slice(i, i + BATCH_SIZE);
+
+        for (const countryApi of batch) {
+          const data = this.transformCountryData(countryApi, exchangeRates);
+          const commonData = {
+            ...data,
+            lastRefreshedAt: refreshAt,
+          };
+
+          const existingCountry = await prisma.country.findFirst({
+            where: {
+              name: {
+                equals: data.name,
+              },
             },
           });
-          inserted++;
+
+          if (existingCountry) {
+            await prisma.country.update({
+              where: { id: existingCountry.id },
+              data: commonData,
+            });
+            updated++;
+          } else {
+            await prisma.country.create({
+              data: commonData,
+            });
+            inserted++;
+          }
         }
+
+        console.log(
+          `[${new Date().toISOString()}] Processed ${Math.min(i + BATCH_SIZE, countriesApiData.length)}/${countriesApiData.length} countries`
+        );
       }
 
       // Update system status
@@ -157,11 +163,11 @@ export class CountryService {
       await prisma.systemStatus.upsert({
         where: { id: 1 },
         create: {
-          lastRefreshedAt: new Date(),
+          lastRefreshedAt: refreshAt,
           totalCountries,
         },
         update: {
-          lastRefreshedAt: new Date(),
+          lastRefreshedAt: refreshAt,
           totalCountries,
         },
       });
@@ -170,8 +176,20 @@ export class CountryService {
         `[${new Date().toISOString()}] Refresh complete: ${inserted} inserted, ${updated} updated`
       );
 
-      // Generate summary image
-      await ImageGeneratorService.generateSummaryImage();
+      setImmediate(() => {
+        void (async () => {
+          try {
+            console.log(`[${new Date().toISOString()}] Starting background image generation...`);
+            await ImageGeneratorService.generateSummaryImage();
+            console.log(`[${new Date().toISOString()}] Background image generation completed`);
+          } catch (imageError) {
+            console.error(
+              `[${new Date().toISOString()}] Warning: Failed to generate summary image:`,
+              imageError
+            );
+          }
+        })();
+      });
 
       return { updated, inserted };
     } catch (error) {
@@ -183,7 +201,6 @@ export class CountryService {
     }
   }
 
-  // Gets all countries with optional filtering and sorting
   static async getAllCountries(filters: FilterOptions): Promise<CountryResponse[]> {
     try {
       const whereClause: {
@@ -245,7 +262,6 @@ export class CountryService {
     }
   }
 
-  // Gets a single country by name
   static async getCountryByName(name: string): Promise<CountryResponse> {
     try {
       const country = await prisma.country.findFirst({
@@ -270,7 +286,6 @@ export class CountryService {
     }
   }
 
-  // Deletes a country by name
   static async deleteCountry(name: string): Promise<void> {
     try {
       const country = await prisma.country.findFirst({
@@ -289,7 +304,6 @@ export class CountryService {
         where: { id: country.id },
       });
 
-      // Update system status
       const totalCountries = await prisma.country.count();
       await prisma.systemStatus.update({
         where: { id: 1 },
@@ -306,7 +320,6 @@ export class CountryService {
     }
   }
 
-  // Gets system status
   static async getStatus(): Promise<{
     total_countries: number;
     last_refreshed_at: string;
@@ -333,7 +346,6 @@ export class CountryService {
     }
   }
 
-  // Formats country for API response
   private static formatCountryResponse(country: {
     id: number;
     name: string;

@@ -24,7 +24,6 @@ router.post('/refresh', async (_req: Request, res: Response, next: NextFunction)
   }
 });
 
-// Get all countries with optional filtering and sorting
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const filters = filterQuerySchema.parse(req.query);
@@ -37,7 +36,6 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// Serve the generated summary image
 router.get('/image', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const imageExists = await ImageGeneratorService.imageExists();
@@ -51,8 +49,9 @@ router.get('/image', async (_req: Request, res: Response, next: NextFunction) =>
       const imageUrl = await ImageGeneratorService.getImageUrl();
       res.redirect(imageUrl);
     } else {
-      // If using local storage, serve the file
+      // If using local storage, serve the file with proper content type
       const imagePath = ImageGeneratorService.getLocalImagePath();
+      res.setHeader('Content-Type', 'image/png');
       res.sendFile(imagePath);
     }
   } catch (error) {
@@ -60,7 +59,6 @@ router.get('/image', async (_req: Request, res: Response, next: NextFunction) =>
   }
 });
 
-// Get a specific country by name
 router.get('/:name', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { name } = req.params;
@@ -73,7 +71,6 @@ router.get('/:name', async (req: Request, res: Response, next: NextFunction) => 
   }
 });
 
-// Delete a country record
 router.delete('/:name', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { name } = req.params;

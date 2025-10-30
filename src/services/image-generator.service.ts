@@ -1,4 +1,4 @@
-import { createCanvas } from 'canvas';
+import puppeteer from 'puppeteer';
 import { PrismaClient } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -15,8 +15,9 @@ export class ImageGeneratorService {
   private static readonly USE_S3 = process.env.IMAGE_STORAGE === 's3';
 
   static async generateSummaryImage(): Promise<string> {
+    let browser;
     try {
-      console.log(`[${new Date().toISOString()}] Generating summary image...`);
+      console.log(`[${new Date().toISOString()}] Generating summary image with Puppeteer...`);
 
       const totalCountries = await prisma.country.count();
 
@@ -34,73 +35,65 @@ export class ImageGeneratorService {
       const status = await prisma.systemStatus.findUnique({ where: { id: 1 } });
       const lastRefreshed = status?.lastRefreshedAt || new Date();
 
-      // Create canvas
-      const canvas = createCanvas(this.WIDTH, this.HEIGHT);
-      const ctx = canvas.getContext('2d');
+      // Generate HTML content
+      const html = this.generateHTML(totalCountries, topCountries, lastRefreshed);
 
-      // Background
-      ctx.fillStyle = '#1a1a2e';
-      ctx.fillRect(0, 0, this.WIDTH, this.HEIGHT);
+      // Launch headless browser with timeout
+      const launchTimeout = setTimeout(() => {
+        throw new Error('Puppeteer launch timeout after 10 seconds');
+      }, 10000);
 
-      // Title
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 36px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText('Country Currency & Exchange API', this.WIDTH / 2, 60);
-
-      // Subtitle
-      ctx.font = '20px Arial';
-      ctx.fillStyle = '#a8dadc';
-      ctx.fillText('Data Summary', this.WIDTH / 2, 95);
-
-      // Total Countries
-      ctx.font = 'bold 28px Arial';
-      ctx.fillStyle = '#f1faee';
-      ctx.textAlign = 'left';
-      ctx.fillText(`Total Countries: ${totalCountries}`, 50, 150);
-
-      // Top 5 Countries Header
-      ctx.font = 'bold 24px Arial';
-      ctx.fillStyle = '#e63946';
-      ctx.fillText('Top 5 Countries by GDP:', 50, 200);
-
-      // Top 5 Countries List
-      ctx.font = '18px Arial';
-      ctx.fillStyle = '#ffffff';
-      let yPosition = 240;
-
-      topCountries.forEach((country, index) => {
-        const gdp = country.estimatedGdp ? `$${(country.estimatedGdp / 1e9).toFixed(2)}B` : 'N/A';
-
-        ctx.fillText(`${index + 1}. ${country.name} - ${gdp}`, 70, yPosition);
-        yPosition += 35;
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-software-rasterizer',
+          '--disable-extensions',
+        ],
+        timeout: 10000,
       });
 
-      // Last Refreshed
-      ctx.font = '16px Arial';
-      ctx.fillStyle = '#a8dadc';
-      ctx.textAlign = 'center';
-      const refreshText = `Last Refreshed: ${lastRefreshed.toUTCString()}`;
-      ctx.fillText(refreshText, this.WIDTH / 2, this.HEIGHT - 40);
+      clearTimeout(launchTimeout);
 
-      // Decorative line
-      ctx.strokeStyle = '#457b9d';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(50, this.HEIGHT - 70);
-      ctx.lineTo(this.WIDTH - 50, this.HEIGHT - 70);
-      ctx.stroke();
+      const page = await browser.newPage();
+      await page.setViewport({ width: this.WIDTH, height: this.HEIGHT });
 
-      // Convert to buffer
-      const buffer = canvas.toBuffer('image/png');
+      // Set content with timeout
+      await page.setContent(html, {
+        waitUntil: 'domcontentloaded',
+        timeout: 5000,
+      });
+
+      // Take screenshot with timeout
+      const screenshotTimeout = setTimeout(() => {
+        throw new Error('Screenshot timeout after 5 seconds');
+      }, 5000);
+
+      const buffer = await page.screenshot({
+        type: 'png',
+        fullPage: false,
+      });
+
+      clearTimeout(screenshotTimeout);
+
+      await browser.close();
+      browser = undefined;
+
+      console.log(`[${new Date().toISOString()}] Screenshot generated successfully`);
 
       // Save to S3 or local filesystem
       if (this.USE_S3) {
-        const imageUrl = await S3Service.uploadImage(buffer, this.S3_IMAGE_KEY, 'image/png');
+        const imageUrl = await S3Service.uploadImage(
+          buffer as Buffer,
+          this.S3_IMAGE_KEY,
+          'image/png'
+        );
         console.log(`[${new Date().toISOString()}] Summary image uploaded to S3`);
         return imageUrl;
       } else {
-        // Save locally
         const cacheDir = path.dirname(this.LOCAL_IMAGE_PATH);
         if (!fs.existsSync(cacheDir)) {
           fs.mkdirSync(cacheDir, { recursive: true });
@@ -110,9 +103,116 @@ export class ImageGeneratorService {
         return this.LOCAL_IMAGE_PATH;
       }
     } catch (error) {
+      if (browser) {
+        await browser.close().catch((closeError) => {
+          console.error('Error closing browser:', closeError);
+        });
+      }
       console.error('Error generating image:', error);
       throw new AppError(500, 'Failed to generate summary image');
     }
+  }
+
+  private static generateHTML(
+    totalCountries: number,
+    topCountries: { name: string; estimatedGdp: number | null }[],
+    lastRefreshed: Date
+  ): string {
+    const countriesHTML = topCountries
+      .map((country, index) => {
+        const gdp = country.estimatedGdp ? `$${(country.estimatedGdp / 1e9).toFixed(2)}B` : 'N/A';
+        return `<div class="country-item">${index + 1}. ${country.name} - ${gdp}</div>`;
+      })
+      .join('');
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <style>
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+            body {
+              width: 800px;
+              height: 600px;
+              background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+              font-family: Arial, sans-serif;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+              padding: 40px 50px;
+            }
+            .header {
+              text-align: center;
+            }
+            .title {
+              color: #ffffff;
+              font-size: 36px;
+              font-weight: bold;
+              margin-bottom: 10px;
+            }
+            .subtitle {
+              color: #a8dadc;
+              font-size: 20px;
+            }
+            .content {
+              flex: 1;
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
+            }
+            .total-countries {
+              color: #f1faee;
+              font-size: 28px;
+              font-weight: bold;
+              margin-bottom: 30px;
+            }
+            .top-header {
+              color: #e63946;
+              font-size: 24px;
+              font-weight: bold;
+              margin-bottom: 20px;
+            }
+            .countries-list {
+              margin-left: 20px;
+            }
+            .country-item {
+              color: #ffffff;
+              font-size: 18px;
+              margin-bottom: 10px;
+            }
+            .footer {
+              text-align: center;
+              padding-top: 20px;
+              border-top: 2px solid #457b9d;
+            }
+            .last-refreshed {
+              color: #a8dadc;
+              font-size: 16px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="title">Country Currency & Exchange API</div>
+            <div class="subtitle">Data Summary</div>
+          </div>
+          <div class="content">
+            <div class="total-countries">Total Countries: ${totalCountries}</div>
+            <div class="top-header">Top 5 Countries by GDP:</div>
+            <div class="countries-list">
+              ${countriesHTML}
+            </div>
+          </div>
+          <div class="footer">
+            <div class="last-refreshed">Last Refreshed: ${lastRefreshed.toUTCString()}</div>
+          </div>
+        </body>
+      </html>
+    `;
   }
 
   static async getImageUrl(): Promise<string> {

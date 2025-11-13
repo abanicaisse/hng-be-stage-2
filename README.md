@@ -1,4 +1,4 @@
-# Country Currency & Exchange API - Backend Wizards Stage 2
+# Country Currency & Exchange API - HNGi13 Stage 2
 
 A RESTful API that fetches country data and exchange rates from external APIs, performs computations, stores data in MySQL, and generates visual summaries.
 
